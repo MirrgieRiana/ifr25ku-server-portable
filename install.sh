@@ -24,7 +24,7 @@ tar -xzf xarpite-bin-4.93.1-all.tar.gz -C ./xarpite
 # Get NeoForge and initialize server
 wget "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.217/neoforge-21.1.217-installer.jar"
 mkdir server
-(cd server; java -jar ../neoforge-21.1.217-installer.jar)
+(cd server; java -jar ../neoforge-21.1.217-installer.jar --install-server)
 
 # Configure server
 cat server/user_jvm_args.txt | grep -vE '^[ \t]*#' | grep -E -- '-Xmx4G\b' > /dev/null || {
