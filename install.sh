@@ -42,3 +42,5 @@ cat modpack/modrinth.index.json | ./xarpite/xa 'IN.$*.files().downloads() | EXEC
 # Install Petrol's Parts
 wget https://cdn.modrinth.com/data/AN0CZD9P/versions/uI6g3SiQ/petrolsparts-1.21.1-1.2.7.jar -P server/mods
 wget https://cdn.modrinth.com/data/ik2WZkTZ/versions/oAqMSjdK/petrolpark-1.21.1-1.4.25.jar -P server/mods
+
+echo "Success"
