@@ -28,6 +28,7 @@ mkdir server
 
 # Configure server
 cat server/user_jvm_args.txt | grep -vE '^[ \t]*#' | grep -E -- '-Xmx4G\b' > /dev/null || {
+  echo "" >> server/user_jvm_args.txt
   echo "-Xmx4G" >> server/user_jvm_args.txt
 }
 
