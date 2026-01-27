@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -eu
+cd -- "$(dirname -- "$0")"
 type wget > /dev/null
 type java > /dev/null
 type tar > /dev/null
@@ -17,14 +18,20 @@ mkdir "$dir"
 cd "$dir"
 
 # Get Xarpite
-wget "https://repo1.maven.org/maven2/io/github/mirrgieriana/xarpite-bin/4.93.1/xarpite-bin-4.93.1-all.tar.gz"
-mkdir ./xarpite
-tar -xzf xarpite-bin-4.93.1-all.tar.gz -C ./xarpite
+if [ ! -e xarpite ]; then
+  wget "https://repo1.maven.org/maven2/io/github/mirrgieriana/xarpite-bin/4.93.1/xarpite-bin-4.93.1-all.tar.gz"
+  mkdir ./xarpite
+  tar -xzf xarpite-bin-4.93.1-all.tar.gz -C ./xarpite
+fi
 
 # Get NeoForge and initialize server
-wget "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.217/neoforge-21.1.217-installer.jar"
-mkdir server
-(cd server; java -jar ../neoforge-21.1.217-installer.jar --install-server)
+if [ ! -e neoforge-21.1.217-installer.jar ]; then
+  wget "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.217/neoforge-21.1.217-installer.jar"
+fi
+if [ ! -e server ]; then
+  mkdir server
+  (cd server; java -jar ../neoforge-21.1.217-installer.jar --install-server)
+fi
 
 # Configure server
 cat server/user_jvm_args.txt | grep -vE '^[ \t]*#' | grep -E -- '-Xmx4G\b' > /dev/null || {
@@ -32,16 +39,27 @@ cat server/user_jvm_args.txt | grep -vE '^[ \t]*#' | grep -E -- '-Xmx4G\b' > /de
   echo "-Xmx4G" >> server/user_jvm_args.txt
 }
 
-# Get Modpack
-wget "https://cdn.modrinth.com/data/Mk6QNSrA/versions/emwVcPv1/IFR25KU%20Server%202026.1.7.mrpack"
-unzip 'IFR25KU Server 2026.1.7.mrpack' -d modpack
-chmod -R a+r modpack
+./xarpite/xa -q '
+  @USE("./../maven/io/github/mirrgieriana/modrinth-client/0.0.1/modrinth-client-0.0.1.xa1")
 
-# Install mods to server
-cat modpack/modrinth.index.json | ./xarpite/xa 'IN.$*.files().downloads() | EXEC("wget", _, "-P", "server/mods")'
+  serverModpackProjectId     := "ifr25ku-server-2509"
+  serverModpackVersionNumber := "2026.1.24"
 
-# Install Petrol's Parts
-wget https://cdn.modrinth.com/data/AN0CZD9P/versions/uI6g3SiQ/petrolsparts-1.21.1-1.2.7.jar -P server/mods
-wget https://cdn.modrinth.com/data/ik2WZkTZ/versions/oAqMSjdK/petrolpark-1.21.1-1.4.25.jar -P server/mods
+  # Get Modpack
+  file := getProjectVersions(serverModpackProjectId)()
+    >> FILTER [ _ => _.version_number == serverModpackVersionNumber ]
+    | _.files()
+    >> FILTER [ _ => _.primary ]
+    >> SINGLE
+  EXEC("wget", "-nv", file.url)
+  EXEC("unzip", file.filename, "-d", "modpack")
+  EXEC("chmod", "-R", "a+r", "modpack")
+
+  # Install mods to server
+  READ("modpack/modrinth.index.json").&.$*.files().downloads() | url => (
+    EXEC("wget", "-nv", url, "-P", "server/mods")
+  )
+
+'
 
 echo "Success"
