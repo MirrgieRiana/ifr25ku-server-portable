@@ -1,0 +1,8 @@
+fetch := api  -> EXEC("curl", "-s", "https://api.modrinth.com/v2/$api").$*
+sha1  := file -> EXEC("sha1sum", file)[0 ~ 40]
+{
+  getProject        : id    -> fetch("project/$id")
+  getProjectVersions: id    -> fetch("project/$id/version")
+  search            : query -> fetch("search?query=$(query >> URL)")
+  fileSearch        : file  -> fetch("version_file/$(file >> sha1)?algorithm=sha1")
+}
