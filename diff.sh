@@ -7,7 +7,7 @@
 target_dir=$1
 
 [ -f MODRINTH_MINECRAFT_DIR ] || {
-  echo "MODRINTH_MINECRAFT_DIR is not supplied" 2>&1
+  echo "MODRINTH_MINECRAFT_DIR is not supplied" >&2
   exit 1
 }
 new=$(cat MODRINTH_MINECRAFT_DIR)
