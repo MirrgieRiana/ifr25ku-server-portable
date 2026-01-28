@@ -3,6 +3,7 @@
 set -eu
 cd -- "$(dirname -- "$0")"
 type wget > /dev/null
+type curl > /dev/null
 type java > /dev/null
 type unzip > /dev/null
 
