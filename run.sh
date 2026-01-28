@@ -6,5 +6,5 @@
 }
 dir=$1
 
-cd "$dir/server"
-./run.sh -nogui
+cd "$dir/server" || exit
+exec ./run.sh -nogui
