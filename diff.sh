@@ -13,3 +13,4 @@ target_dir=$1
 new=$(cat MODRINTH_MINECRAFT_DIR)
 
 diff -U0 <(ls -1 "$target_dir/mods") <(ls -1 "$new/mods") | grep -vE '^(@@|---|\+\+\+) '
+exit 0
