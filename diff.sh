@@ -2,7 +2,7 @@
 
 (($# == 1)) || {
   echo "Usage: $0 <target_dir>" >&2
-  exit
+  exit 1
 }
 target_dir=$1
 
