@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 (($# == 1)) || {
-  echo "Usage: $0 <dir>" >&2
+  echo "Usage: $0 <target_dir>" >&2
   exit
 }
-dir=$1
+target_dir=$1
 
-cd "$dir/server" || exit
+cd "$target_dir" || exit
 exec ./run.sh -nogui

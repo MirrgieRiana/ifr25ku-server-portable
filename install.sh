@@ -4,45 +4,49 @@ set -eu
 cd -- "$(dirname -- "$0")"
 type wget > /dev/null
 type java > /dev/null
-type tar > /dev/null
 type unzip > /dev/null
 
 (($# == 1)) || {
-  echo "Usage: $0 <dir>" >&2
-  exit
+  echo "Usage: $0 <target_dir>" >&2
+  exit 1
 }
-dir=$1
+export target_dir="$1"
 
-# Make directory
-mkdir "$dir"
-cd "$dir"
+export workspace_dir="$(pwd)"
+export build_dir="$workspace_dir/build"
 
-# Get Xarpite
-if [ ! -e xarpite ]; then
-  wget "https://repo1.maven.org/maven2/io/github/mirrgieriana/xarpite-bin/4.93.1/xarpite-bin-4.93.1-all.tar.gz"
-  mkdir ./xarpite
-  tar -xzf xarpite-bin-4.93.1-all.tar.gz -C ./xarpite
-fi
+# Make target directory
+[ -e "$target_dir" ] && {
+  echo "Already exists: $target_dir" >&2
+  exit 1
+}
+mkdir -p "$target_dir"
 
-# Get NeoForge and initialize server
-if [ ! -e neoforge-21.1.217-installer.jar ]; then
-  wget "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.217/neoforge-21.1.217-installer.jar"
-fi
-if [ ! -e server ]; then
-  mkdir server
-  (cd server; java -jar ../neoforge-21.1.217-installer.jar --install-server)
-fi
+# Get NeoForge
+neoforge_version=21.1.217
+neoforge_installer_filename=neoforge-$neoforge_version-installer.jar
+neoforge_installer_dir="$build_dir"/neoforge-installer
+neoforge_installer_path="$neoforge_installer_dir"/"$neoforge_installer_filename"
+mkdir -p "$neoforge_installer_dir"
+[ ! -e "$neoforge_installer_path" ] && {
+  wget "https://maven.neoforged.net/releases/net/neoforged/neoforge/$neoforge_version/$neoforge_installer_filename" \
+    -O "$neoforge_installer_path"
+}
+
+# Initialize server
+(
+  cd -- "$target_dir"
+  java -jar "$neoforge_installer_path" --install-server
+)
 
 # Configure server
-cat server/user_jvm_args.txt | grep -vE '^[ \t]*#' | grep -E -- '-Xmx4G\b' > /dev/null || {
-  echo "" >> server/user_jvm_args.txt
-  echo "-Xmx4G" >> server/user_jvm_args.txt
-}
+echo "" >> "$target_dir"/user_jvm_args.txt
+echo "-Xmx4G" >> "$target_dir"/user_jvm_args.txt
 
 ./xarpite/xa -q '
-  @USE("./../maven/io/github/mirrgieriana/modrinth-client/0.0.1/modrinth-client-0.0.1.xa1")
+  @USE("./maven/io/github/mirrgieriana/modrinth-client/0.0.1/modrinth-client-0.0.1.xa1")
 
-  serverModpackProjectId     := "ifr25ku-server-2509"
+  serverModpackProjectId     := READ("SERVER_MODPACK_PROJECT_ID").&
   serverModpackVersionNumber := "2026.1.24"
 
   # Get Modpack
@@ -51,13 +55,13 @@ cat server/user_jvm_args.txt | grep -vE '^[ \t]*#' | grep -E -- '-Xmx4G\b' > /de
     | _.files()
     >> FILTER [ _ => _.primary ]
     >> SINGLE
-  EXEC("wget", "-nv", file.url)
-  EXEC("unzip", file.filename, "-d", "modpack")
-  EXEC("chmod", "-R", "a+r", "modpack")
+  EXEC("mkdir", "-p", "$(ENV.build_dir)/modpacks")
+  EXEC("wget", "-nv", file.url, "-P", "$(ENV.build_dir)/modpacks")
 
   # Install mods to server
-  READ("modpack/modrinth.index.json").&.$*.files().downloads() | url => (
-    EXEC("wget", "-nv", url, "-P", "server/mods")
+  modpackData := EXEC("unzip", "-p", "$(ENV.build_dir)/modpacks/$(file.filename)", "modrinth.index.json").&.$*
+  modpackData.files().downloads() | url => (
+    EXEC("wget", "-nv", url, "-P", "$(ENV.target_dir)/mods")
   )
 
 '
