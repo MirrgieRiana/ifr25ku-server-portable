@@ -48,7 +48,7 @@ echo "-Xmx4G" >> "$target_dir"/user_jvm_args.txt
   @USE("./maven/io/github/mirrgieriana/modrinth-client/0.0.1/modrinth-client-0.0.1.xa1")
 
   serverModpackProjectId     := READ("SERVER_MODPACK_PROJECT_ID").&
-  serverModpackVersionNumber := "2026.1.24"
+  serverModpackVersionNumber := READ("SERVER_MODPACK_VERSION").&
 
   # Get Modpack
   file := getProjectVersions(serverModpackProjectId)()
