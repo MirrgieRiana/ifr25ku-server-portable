@@ -24,7 +24,7 @@ export build_dir="$workspace_dir/build"
 mkdir -p "$target_dir"
 
 # Get NeoForge
-neoforge_version=21.1.217
+neoforge_version="$(cat NEOFORGE_VERSION)"
 neoforge_installer_filename=neoforge-$neoforge_version-installer.jar
 neoforge_installer_dir="$build_dir"/neoforge-installer
 neoforge_installer_path="$neoforge_installer_dir"/"$neoforge_installer_filename"
