@@ -12,4 +12,4 @@ target_dir=$1
 }
 new=$(cat MODRINTH_MINECRAFT_DIR)
 
-rsync -a --delete -v "$new/mods/" "$target_dir/mods/"
+rsync -c -a --delete -v "$new/mods/" "$target_dir/mods/"
