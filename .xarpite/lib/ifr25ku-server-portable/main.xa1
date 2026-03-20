@@ -23,6 +23,12 @@
   )
 
   /**
+   * getSha1(filePath: STRING): STRING
+   * ファイルの SHA-1 ハッシュを返します。
+   */
+  getSha1 := filePath -> EXECL("sha1sum", filePath).&[0 ~ 40]
+
+  /**
    * <T> cached(name: STRING, initializer: () -> T): T
    * [name] で指定されたキャッシュエントリーがキャッシュファイルに存在する場合はその値を返し、
    * 存在しない場合は [initializer] を呼び出して得られた値をファイルにキャッシュしてから返します。
@@ -31,7 +37,6 @@
     {
       isFile := path -> EXECL("bash", "-c", %>[ -f "$1" ]; echo $?<%, "-", path).&.+ == 0
       mkdirs := path -> EXECL("mkdir", "-p", path)
-      getSha1 := path -> EXECL("sha1sum", path).&[0 ~ 40]
 
       readJson := path -> READL(path).& >> JSOND
       writeJson := path, data -> WRITE[path] << data >> JSON[2]
@@ -55,7 +60,7 @@
    * Modrinth のプロジェクト ID を指定してプロジェクトデータを取得します。
    * 取得したデータはファイルにキャッシュされます。
    */
-  getProject := projectId -> cached["getProject-$projectId"] ( => getProject(projectId) )
+  getProject := projectId -> cached["getProject-$projectId"] ( => getModrinthClient().getProject(projectId) )
 
   /**
    * getDefaultModpackVersions(): ARRAY<ModpackVersion>
@@ -69,6 +74,13 @@
       EXECL(projectDir RESOLVE "libs/fsaintjacques/semver-tool/src/semver", "compare", a.version_number, b.version_number).&.+
     ] >> TO_ARRAY
   )
+
+  /**
+   * getVersionFromFile(filePath: STRING): Version
+   * ファイルパスを指定して、そのファイルに対応する Modrinth のバージョンデータを取得します。
+   * 取得したデータはファイルにキャッシュされます。
+   */
+  getVersionFromFile := filePath -> cached["getVersionFromFile-$(getSha1(filePath))"] ( => getModrinthClient().fileSearch(filePath) )
 
   /**
    * diffToDefaultMinecraftDir(targetMinecraftDir: STRING): STRING<diff>
