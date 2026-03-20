@@ -109,6 +109,25 @@
   )
 
   /**
+   * getModDependencies(minecraftDir: STRING?): ARRAY<STRING>
+   * [minecraftDir] の mods ディレクトリ内の Mod ファイルの依存関係を出力します。
+   * [minecraftDir] が NULL の場合はデフォルトの Minecraft ディレクトリを使用します。
+   */
+  getModDependencies := minecraftDir -> (
+    __.$# == 1 || !! "Usage: getModDependencies(minecraftDir: STRING?): ARRAY<STRING>"
+    modsDir := (minecraftDir ?: getConfig().modrinth_minecraft_dir) RESOLVE "mods"
+    modFiles := FILE_TREE(modsDir) >> FILTER[by: _ -> _ RESOLVE ".." == modsDir] >> TO_ARRAY
+    modFiles() | filePath => LAUNCH ( =>
+        version := getVersionFromFile(filePath)
+        {
+            path: filePath
+            project_id: version.project_id
+            dependencies: version.dependencies().project_id >> TO_ARRAY
+        }
+    ) >> CACHE | _::await()
+  )
+
+  /**
    * getRunCommand(targetMinecraftDir: STRING): STRING
    * [targetMinecraftDir] で Minecraft サーバーを起動するためのコマンドを返します。
    * `xa '...; getRunCommand(dir)' | bash` のようにして使用します。
