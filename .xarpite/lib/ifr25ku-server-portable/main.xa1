@@ -1,6 +1,7 @@
 {
 
   /**
+   * projectDir: STRING
    * このスクリプトから見たプロジェクトのルートディレクトリ。
    * このスクリプトを移動した場合はこのパスも変更する必要があります。
    */
@@ -8,11 +9,13 @@
 
   /**
    * getConfig(): OBJECT<STRING>
+   * プロジェクトのルートディレクトリにある config.json を読み込んで返します。
    */
   getConfig := LAZY ( => READ(projectDir RESOLVE "config.json").$* )
 
   /**
    * getModrinthClient(): ModrinthClient
+   * Modrinth API クライアントを返します。クライアントは最初の呼び出し時に作成され、その後はキャッシュされたインスタンスが返されます。
    */
   getModrinthClient := LAZY ( =>
     INC += getConfig().modrinth_client_inc
@@ -20,21 +23,52 @@
   )
 
   /**
+   * <T> cached(name: STRING, initializer: () -> T): T
+   * [name] で指定されたキャッシュエントリーがキャッシュファイルに存在する場合はその値を返し、
+   * 存在しない場合は [initializer] を呼び出して得られた値をファイルにキャッシュしてから返します。
+   */
+  cached := (
+    {
+      isFile := path -> EXECL("bash", "-c", %>[ -f "$1" ]; echo $?<%, "-", path).&.+ == 0
+      mkdirs := path -> EXECL("mkdir", "-p", path)
+      getSha1 := path -> EXECL("sha1sum", path).&[0 ~ 40]
+
+      readJson := path -> READL(path).& >> JSOND
+      writeJson := path, data -> WRITE[path] << data >> JSON[2]
+
+      cached := name, initializer -> (
+          path := projectDir RESOLVE ".cache/$(PERCENT(name))"
+          isFile(path) ? (
+              readJson(path)
+          ) : (
+              data := initializer()
+              mkdirs(projectDir RESOLVE ".cache")
+              writeJson(path; data)
+              data
+          )
+      )
+    }.cached
+  )
+
+  /**
+   * getProject(projectId: STRING): ModrinthProject
+   * Modrinth のプロジェクト ID を指定してプロジェクトデータを取得します。
+   * 取得したデータはファイルにキャッシュされます。
+   */
+  getProject := projectId -> cached["getProject-$projectId"] ( => getProject(projectId) )
+
+  /**
    * getDefaultModpackVersions(): ARRAY<ModpackVersion>
    * デフォルトの Modpack のバージョンデータを取得し、昇順で返します。
+   * 取得したデータはファイルにキャッシュされます。
    */
   getDefaultModpackVersions := () -> (
-    getModrinthClient().getProjectVersions(getConfig().server_modpack_project_id)()
+    projectId := getConfig().server_modpack_project_id
+    cached["getProjectVersions-$projectId"] ( => getModrinthClient().getProjectVersions(projectId) )()
     >> SORT [ a, b =>
       EXECL(projectDir RESOLVE "libs/fsaintjacques/semver-tool/src/semver", "compare", a.version_number, b.version_number).&.+
     ] >> TO_ARRAY
   )
-
-  /**
-   * getDefaultModpackVersionNumbers(): ARRAY<STRING>
-   * デフォルトの Modpack のバージョン番号を取得し、昇順で返します。
-   */
-  getDefaultModpackVersionNumbers := () -> getDefaultModpackVersions()().version_number >> TO_ARRAY
 
   /**
    * diffToDefaultMinecraftDir(targetMinecraftDir: STRING): STRING<diff>
