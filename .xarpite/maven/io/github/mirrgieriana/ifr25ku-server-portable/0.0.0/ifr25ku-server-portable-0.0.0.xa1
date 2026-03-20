@@ -99,7 +99,7 @@ projectDir := ENV.IFR25KU_SERVER_PORTABLE_HOME ?: PWD
     EXECL("bash", "-c", %>command -v curl > /dev/null; echo $?<%).&.+ == 0 || !! "Error: curl is not installed"
     EXECL("bash", "-c", %>command -v java > /dev/null; echo $?<%).&.+ == 0 || !! "Error: java is not installed"
     EXECL("bash", "-c", %>command -v unzip > /dev/null; echo $?<%).&.+ == 0 || !! "Error: unzip is not installed"
-    exists(targetMinecraftDir) && !! "Target Minecraft directory already exists: $targetMinecraftDir"
+    exists(targetMinecraftDir) && !! "Error: Target Minecraft directory already exists: $targetMinecraftDir"
 
     # NeoForge インストーラーのダウンロード
     neoforgeVersion := getConfig().neoforge_version
