@@ -1,10 +1,5 @@
 
-/**
- * projectDir: STRING
- * このスクリプトから見たプロジェクトのルートディレクトリ。
- * このスクリプトを移動した場合はこのパスも変更する必要があります。
- */
-projectDir := LOCATION RESOLVE "../../../../../../../.."
+projectDir := ENV.IFR25KU_SERVER_PORTABLE_HOME ?: PWD
 
 @{
   isFile := path -> EXECL("bash", "-c", %>[ -f "$1" ]; echo $?<%, "-", path).&.+ == 0
@@ -20,12 +15,12 @@ projectDir := LOCATION RESOLVE "../../../../../../../.."
    * 存在しない場合は [initializer] を呼び出して得られた値をファイルにキャッシュしてから返します。
    */
   cached := name, initializer -> (
-    path := projectDir RESOLVE "build/cache/$(PERCENT(name))"
+    path := projectDir RESOLVE ".ifr25ku-server-portable/build/cache/$(PERCENT(name))"
     isFile(path) ? (
       readJson(path)
     ) : (
       data := initializer()
-      mkdirs(projectDir RESOLVE "build/cache")
+      mkdirs(projectDir RESOLVE ".ifr25ku-server-portable/build/cache")
       writeJson(path; data)
       data
     )
@@ -38,7 +33,14 @@ projectDir := LOCATION RESOLVE "../../../../../../../.."
    * getConfig(): OBJECT<STRING>
    * プロジェクトのルートディレクトリにある config.json を読み込んで返します。
    */
-  getConfig := LAZY ( => READ(projectDir RESOLVE "config.json").$* )
+  getConfig := LAZY ( =>
+    configPath := projectDir RESOLVE ".ifr25ku-server-portable/config.json"
+    exists(configPath) ? (
+      readJson(configPath)
+    ) : (
+      !! "Error: Config file not found at $configPath."
+    )
+  )
 
   /**
    * getModrinthClient(): ModrinthClient
@@ -102,7 +104,7 @@ projectDir := LOCATION RESOLVE "../../../../../../../.."
     # NeoForge インストーラーのダウンロード
     neoforgeVersion := getConfig().neoforge_version
     neoforgeInstallerFilename := "neoforge-$neoforgeVersion-installer.jar"
-    neoforgeInstallerDir := projectDir RESOLVE "build/neoforge-installer"
+    neoforgeInstallerDir := projectDir RESOLVE ".ifr25ku-server-portable/build/neoforge-installer"
     neoforgeInstallerPath := neoforgeInstallerDir RESOLVE neoforgeInstallerFilename
     exists(neoforgeInstallerPath) ? (
       OUT << "NeoForge installer already exists at $neoforgeInstallerPath, skipping download"
@@ -140,7 +142,7 @@ projectDir := LOCATION RESOLVE "../../../../../../../.."
       | _.files()
       >> FILTER [ _ => _.primary ]
       >> SINGLE
-    modpacksDir := projectDir RESOLVE "build/modpacks"
+    modpacksDir := projectDir RESOLVE ".ifr25ku-server-portable/build/modpacks"
     modpackPath := modpacksDir RESOLVE modPackFile.filename
     exists(modpackPath) ? (
       OUT << "Modpack already exists at $modpackPath, skipping download"
