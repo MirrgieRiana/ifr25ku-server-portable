@@ -4,7 +4,7 @@
  * このスクリプトから見たプロジェクトのルートディレクトリ。
  * このスクリプトを移動した場合はこのパスも変更する必要があります。
  */
-projectDir := LOCATION RESOLVE "../../../.."
+projectDir := LOCATION RESOLVE "../../../../../../../.."
 
 @{
   isFile := path -> EXECL("bash", "-c", %>[ -f "$1" ]; echo $?<%, "-", path).&.+ == 0
