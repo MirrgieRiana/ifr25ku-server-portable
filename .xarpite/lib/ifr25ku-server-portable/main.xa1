@@ -156,10 +156,14 @@ projectDir := LOCATION RESOLVE "../../../.."
     OUT << "Installing $(modpack.files.$#) mods to $targetMinecraftDir"
     mkdirs(targetMinecraftDir RESOLVE "mods")
     modpack.files() | file => (
-      path := targetMinecraftDir RESOLVE file.path
+      modPath := targetMinecraftDir RESOLVE file.path
       url := file.downloads() >> SINGLE
-      OUT << "Fetching mod from $url to $path"
-      WRITEB[path] << FETCHB(url)
+      exists(modPath) ? (
+        OUT << "Mod already exists at $modPath, skipping download"
+      ) : (
+        OUT << "Fetching mod from $url to $modPath"
+        WRITEB[modPath] << FETCHB(url)
+      )
     )
     OUT << "Installed $(modpack.files.$#) mods to $targetMinecraftDir"
 
