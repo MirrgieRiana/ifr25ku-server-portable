@@ -1,0 +1,6 @@
+{
+  "modrinth_client_inc": "https://raw.githubusercontent.com/MirrgieRiana/modrinth-client.xa1/d7d9c6c3ba741fc8e2c12d7253ac135870f2127b/.xarpite/maven",
+  "modrinth_client_location": "io.github.mirrgieriana:modrinth-client:0.0.1-SNAPSHOT",
+  "server_modpack_project_id": "ifr25ku-server-2509",
+  "modrinth_minecraft_dir": "/mnt/c/Users/tacti/AppData/Roaming/com.modrinth.theseus/profiles/IFR25KU Server"
+}

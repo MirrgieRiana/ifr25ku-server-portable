@@ -1,0 +1,72 @@
+{
+
+  /**
+   * このスクリプトから見たプロジェクトのルートディレクトリ。
+   * このスクリプトを移動した場合はこのパスも変更する必要があります。
+   */
+  projectDir := LOCATION RESOLVE "../../../.."
+
+  /**
+   * getConfig(): OBJECT<STRING>
+   */
+  getConfig := LAZY ( => READ(projectDir RESOLVE "config.json").$* )
+
+  /**
+   * getModrinthClient(): ModrinthClient
+   */
+  getModrinthClient := LAZY ( =>
+    INC += getConfig().modrinth_client_inc
+    USE(getConfig().modrinth_client_location)
+  )
+
+  /**
+   * getDefaultModpackVersions(): ARRAY<ModpackVersion>
+   * デフォルトの Modpack のバージョンデータを取得し、昇順で返します。
+   */
+  getDefaultModpackVersions := () -> (
+    getModrinthClient().getProjectVersions(getConfig().server_modpack_project_id)()
+    >> SORT [ a, b =>
+      EXECL(projectDir RESOLVE "libs/fsaintjacques/semver-tool/src/semver", "compare", a.version_number, b.version_number).&.+
+    ] >> TO_ARRAY
+  )
+
+  /**
+   * getDefaultModpackVersionNumbers(): ARRAY<STRING>
+   * デフォルトの Modpack のバージョン番号を取得し、昇順で返します。
+   */
+  getDefaultModpackVersionNumbers := () -> getDefaultModpackVersions()().version_number >> TO_ARRAY
+
+  /**
+   * diffToDefaultMinecraftDir(targetMinecraftDir: STRING): STRING<diff>
+   * デフォルトの Minecraft ディレクトリと [targetMinecraftDir] の間で mods ディレクトリの差分を返します。
+   */
+  diffToDefaultMinecraftDir := targetMinecraftDir -> (
+    a := targetMinecraftDir RESOLVE "mods"
+    b := getConfig().modrinth_minecraft_dir RESOLVE "mods"
+    EXEC("bash", "-c", %>
+      diff -U0 <(ls -1 "$1") <(ls -1 "$2") | grep -vE '^(@@|---|\+\+\+) '
+      exit 0
+    <%, "-", a, b)
+  )
+
+  /**
+   * syncFromDefaultMinecraftDir(targetMinecraftDir: STRING): NULL
+   * デフォルトの Minecraft ディレクトリから [targetMinecraftDir] の mods ディレクトリにファイルをコピー・削除して同期します。
+   */
+  syncFromDefaultMinecraftDir := targetMinecraftDir -> (
+    a := getConfig().modrinth_minecraft_dir RESOLVE "mods"
+    b := targetMinecraftDir RESOLVE "mods"
+    EXEC("bash", "-c", %>
+      rsync -c -a --delete -v "$1"/ "$2"/
+    <%, "-", a, b)
+    NULL
+  )
+
+  /**
+   * getRunCommand(targetMinecraftDir: STRING): STRING
+   * [targetMinecraftDir] で Minecraft サーバーを起動するためのコマンドを返します。
+   * `xa '...; getRunCommand(dir)' | bash` のようにして使用します。
+   */
+  getRunCommand := targetMinecraftDir -> %>(cd '<%= targetMinecraftDir::replace(/'/g; %>'\''<%) %>' && ./run.sh -nogui)<%
+
+}
