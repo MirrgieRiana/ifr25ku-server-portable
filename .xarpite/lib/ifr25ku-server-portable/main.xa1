@@ -1,11 +1,38 @@
-{
+
+/**
+ * projectDir: STRING
+ * このスクリプトから見たプロジェクトのルートディレクトリ。
+ * このスクリプトを移動した場合はこのパスも変更する必要があります。
+ */
+projectDir := LOCATION RESOLVE "../../../.."
+
+@{
+  isFile := path -> EXECL("bash", "-c", %>[ -f "$1" ]; echo $?<%, "-", path).&.+ == 0
+  exists := path -> EXECL("bash", "-c", %>[ -e "$1" ]; echo $?<%, "-", path).&.+ == 0
+  mkdirs := path -> EXECL("mkdir", "-p", path)
+
+  readJson := path -> READL(path).& >> JSOND
+  writeJson := path, data -> WRITE[path] << data >> JSON[2]
 
   /**
-   * projectDir: STRING
-   * このスクリプトから見たプロジェクトのルートディレクトリ。
-   * このスクリプトを移動した場合はこのパスも変更する必要があります。
+   * <T> cached(name: STRING, initializer: () -> T): T
+   * [name] で指定されたキャッシュエントリーがキャッシュファイルに存在する場合はその値を返し、
+   * 存在しない場合は [initializer] を呼び出して得られた値をファイルにキャッシュしてから返します。
    */
-  projectDir := LOCATION RESOLVE "../../../.."
+  cached := name, initializer -> (
+    path := projectDir RESOLVE "build/cache/$(PERCENT(name))"
+    isFile(path) ? (
+      readJson(path)
+    ) : (
+      data := initializer()
+      mkdirs(projectDir RESOLVE "build/cache")
+      writeJson(path; data)
+      data
+    )
+  )
+}
+
+{
 
   /**
    * getConfig(): OBJECT<STRING>
@@ -28,32 +55,6 @@
    */
   getSha1 := filePath -> EXECL("sha1sum", filePath).&[0 ~ 40]
 
-  /**
-   * <T> cached(name: STRING, initializer: () -> T): T
-   * [name] で指定されたキャッシュエントリーがキャッシュファイルに存在する場合はその値を返し、
-   * 存在しない場合は [initializer] を呼び出して得られた値をファイルにキャッシュしてから返します。
-   */
-  cached := (
-    {
-      isFile := path -> EXECL("bash", "-c", %>[ -f "$1" ]; echo $?<%, "-", path).&.+ == 0
-      mkdirs := path -> EXECL("mkdir", "-p", path)
-
-      readJson := path -> READL(path).& >> JSOND
-      writeJson := path, data -> WRITE[path] << data >> JSON[2]
-
-      cached := name, initializer -> (
-          path := projectDir RESOLVE ".cache/$(PERCENT(name))"
-          isFile(path) ? (
-              readJson(path)
-          ) : (
-              data := initializer()
-              mkdirs(projectDir RESOLVE ".cache")
-              writeJson(path; data)
-              data
-          )
-      )
-    }.cached
-  )
 
   /**
    * getProject(projectId: STRING): ModrinthProject
@@ -82,6 +83,89 @@
    */
   getVersionFromFile := filePath -> cached["getVersionFromFile-$(getSha1(filePath))"] ( => getModrinthClient().fileSearch(filePath) )
 
+
+  /**
+   * install(targetMinecraftDir: STRING, modpackVersionNumber: STRING?): NULL
+   * [targetMinecraftDir] に NeoForge サーバーと Modpack の Mod をインストールします。
+   * [modpackVersionNumber] が NULL の場合は config.json で指定されたバージョンが使用されます。
+   * ディレクトリが既に存在する場合はエラーになります。
+   */
+  install := targetMinecraftDir, modpackVersionNumber -> (
+    __.$# == 2 || !! "Usage: install(targetMinecraftDir: STRING, modpackVersionNumber: STRING?): NULL"
+
+    # 前提チェック
+    EXECL("bash", "-c", %>command -v curl > /dev/null; echo $?<%).&.+ == 0 || !! "Error: curl is not installed"
+    EXECL("bash", "-c", %>command -v java > /dev/null; echo $?<%).&.+ == 0 || !! "Error: java is not installed"
+    EXECL("bash", "-c", %>command -v unzip > /dev/null; echo $?<%).&.+ == 0 || !! "Error: unzip is not installed"
+    exists(targetMinecraftDir) && !! "Target Minecraft directory already exists: $targetMinecraftDir"
+
+    # NeoForge インストーラーのダウンロード
+    neoforgeVersion := getConfig().neoforge_version
+    neoforgeInstallerFilename := "neoforge-$neoforgeVersion-installer.jar"
+    neoforgeInstallerDir := projectDir RESOLVE "build/neoforge-installer"
+    neoforgeInstallerPath := neoforgeInstallerDir RESOLVE neoforgeInstallerFilename
+    exists(neoforgeInstallerPath) ? (
+      OUT << "NeoForge installer already exists at $neoforgeInstallerPath, skipping download"
+    ) : (
+      url := "https://maven.neoforged.net/releases/net/neoforged/neoforge/$neoforgeVersion/$neoforgeInstallerFilename"
+      OUT << "Fetching NeoForge installer from $url"
+      mkdirs(neoforgeInstallerDir)
+      WRITEB[neoforgeInstallerPath] << FETCHB(url)
+      OUT << "Downloaded NeoForge installer to $neoforgeInstallerPath"
+    )
+
+    # Minecraft ディレクトリの作成
+    OUT << "Creating Minecraft directory at $targetMinecraftDir"
+    mkdirs(targetMinecraftDir)
+    OUT << "Created Minecraft directory at $targetMinecraftDir"
+
+    # サーバーの初期化
+    OUT << "Initializing server in $targetMinecraftDir using $neoforgeInstallerPath"
+    EXECL("bash", "-c", %>
+      absolute_neoforge_installer_path=$(realpath -s "$2")
+      cd -- "$1"
+      java -jar "$absolute_neoforge_installer_path" --install-server
+    <%, "-", targetMinecraftDir, neoforgeInstallerPath) | *OUT
+    OUT << "Initialized server in $targetMinecraftDir"
+
+    # サーバーの設定
+    userJvmArgsPath := targetMinecraftDir RESOLVE "user_jvm_args.txt"
+    OUT << "Writing user JVM arguments to $userJvmArgsPath"
+    WRITEL[userJvmArgsPath] << CACHE << READL(userJvmArgsPath), "", "-Xmx4G"
+    OUT << "Wrote user JVM arguments to $userJvmArgsPath"
+
+    # Modpack のダウンロード
+    modPackFile := getModrinthClient().getProjectVersions(getConfig().server_modpack_project_id)()
+      >> FILTER [ _ => _.version_number == (modpackVersionNumber ?: getConfig().server_modpack_version) ]
+      | _.files()
+      >> FILTER [ _ => _.primary ]
+      >> SINGLE
+    modpacksDir := projectDir RESOLVE "build/modpacks"
+    modpackPath := modpacksDir RESOLVE modPackFile.filename
+    exists(modpackPath) ? (
+      OUT << "Modpack already exists at $modpackPath, skipping download"
+    ) : (
+      OUT << "Fetching modpack from $(modPackFile.url)"
+      mkdirs(modpacksDir)
+      WRITEB[modpackPath] << FETCHB(modPackFile.url)
+      OUT << "Fetched modpack to $(modpacksDir RESOLVE modPackFile.filename)"
+    )
+
+    # Mod のインストール
+    modpack := EXECL("unzip", "-p", modpackPath, "modrinth.index.json").&.$*
+    OUT << "Installing $(modpack.files.$#) mods to $targetMinecraftDir"
+    mkdirs(targetMinecraftDir RESOLVE "mods")
+    modpack.files() | file => (
+      path := targetMinecraftDir RESOLVE file.path
+      url := file.downloads() >> SINGLE
+      OUT << "Fetching mod from $url to $path"
+      WRITEB[path] << FETCHB(url)
+    )
+    OUT << "Installed $(modpack.files.$#) mods to $targetMinecraftDir"
+
+    OUT << "Success"
+  )
+
   /**
    * diffToDefaultMinecraftDir(targetMinecraftDir: STRING): STRING<diff>
    * デフォルトの Minecraft ディレクトリと [targetMinecraftDir] の間で mods ディレクトリの差分を返します。
@@ -102,7 +186,7 @@
   syncFromDefaultMinecraftDir := targetMinecraftDir -> (
     a := getConfig().modrinth_minecraft_dir RESOLVE "mods"
     b := targetMinecraftDir RESOLVE "mods"
-    EXEC("bash", "-c", %>
+    EXECL("bash", "-c", %>
       rsync -c -a --delete -v "$1"/ "$2"/
     <%, "-", a, b)
     NULL

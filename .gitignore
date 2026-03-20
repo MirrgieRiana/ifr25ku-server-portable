@@ -1,6 +1,3 @@
 /*tmp*/
-/MODRINTH_MINECRAFT_DIR
-/.cache/
-/build/
-*.log
+build/
 .idea/
