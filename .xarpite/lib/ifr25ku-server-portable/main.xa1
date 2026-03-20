@@ -206,12 +206,12 @@ projectDir := LOCATION RESOLVE "../../../.."
     modsDir := (minecraftDir ?: getConfig().modrinth_minecraft_dir) RESOLVE "mods"
     modFiles := FILE_TREE(modsDir) >> FILTER[by: _ -> _ RESOLVE ".." == modsDir] >> TO_ARRAY
     modFiles() | filePath => LAUNCH ( =>
-        version := getVersionFromFile(filePath)
-        {
-            path: filePath
-            project_id: version.project_id
-            dependencies: version.dependencies().project_id >> TO_ARRAY
-        }
+      version := getVersionFromFile(filePath)
+      {
+        path: filePath
+        project_id: version.project_id
+        dependencies: version.dependencies().project_id >> TO_ARRAY
+      }
     ) >> CACHE | _::await()
   )
 
