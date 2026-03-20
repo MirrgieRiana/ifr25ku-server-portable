@@ -1,0 +1,225 @@
+
+/**
+ * projectDir: STRING
+ * このスクリプトから見たプロジェクトのルートディレクトリ。
+ * このスクリプトを移動した場合はこのパスも変更する必要があります。
+ */
+projectDir := LOCATION RESOLVE "../../../../../../../.."
+
+@{
+  isFile := path -> EXECL("bash", "-c", %>[ -f "$1" ]; echo $?<%, "-", path).&.+ == 0
+  exists := path -> EXECL("bash", "-c", %>[ -e "$1" ]; echo $?<%, "-", path).&.+ == 0
+  mkdirs := path -> EXECL("mkdir", "-p", path)
+
+  readJson := path -> READL(path).& >> JSOND
+  writeJson := path, data -> WRITE[path] << data >> JSON[2]
+
+  /**
+   * <T> cached(name: STRING, initializer: () -> T): T
+   * [name] で指定されたキャッシュエントリーがキャッシュファイルに存在する場合はその値を返し、
+   * 存在しない場合は [initializer] を呼び出して得られた値をファイルにキャッシュしてから返します。
+   */
+  cached := name, initializer -> (
+    path := projectDir RESOLVE "build/cache/$(PERCENT(name))"
+    isFile(path) ? (
+      readJson(path)
+    ) : (
+      data := initializer()
+      mkdirs(projectDir RESOLVE "build/cache")
+      writeJson(path; data)
+      data
+    )
+  )
+}
+
+{
+
+  /**
+   * getConfig(): OBJECT<STRING>
+   * プロジェクトのルートディレクトリにある config.json を読み込んで返します。
+   */
+  getConfig := LAZY ( => READ(projectDir RESOLVE "config.json").$* )
+
+  /**
+   * getModrinthClient(): ModrinthClient
+   * Modrinth API クライアントを返します。クライアントは最初の呼び出し時に作成され、その後はキャッシュされたインスタンスが返されます。
+   */
+  getModrinthClient := LAZY ( =>
+    INC += getConfig().modrinth_client_inc
+    USE(getConfig().modrinth_client_location)
+  )
+
+  /**
+   * getSha1(filePath: STRING): STRING
+   * ファイルの SHA-1 ハッシュを返します。
+   */
+  getSha1 := filePath -> EXECL("sha1sum", filePath).&[0 ~ 40]
+
+
+  /**
+   * getProject(projectId: STRING): ModrinthProject
+   * Modrinth のプロジェクト ID を指定してプロジェクトデータを取得します。
+   * 取得したデータはファイルにキャッシュされます。
+   */
+  getProject := projectId -> cached["getProject-$projectId"] ( => getModrinthClient().getProject(projectId) )
+
+  /**
+   * getDefaultModpackVersions(): ARRAY<ModpackVersion>
+   * デフォルトの Modpack のバージョンデータを取得し、昇順で返します。
+   * 取得したデータはファイルにキャッシュされます。
+   */
+  getDefaultModpackVersions := () -> (
+    projectId := getConfig().server_modpack_project_id
+    cached["getProjectVersions-$projectId"] ( => getModrinthClient().getProjectVersions(projectId) )()
+    >> SORT [ a, b =>
+      EXECL(projectDir RESOLVE "libs/fsaintjacques/semver-tool/src/semver", "compare", a.version_number, b.version_number).&.+
+    ] >> TO_ARRAY
+  )
+
+  /**
+   * getVersionFromFile(filePath: STRING): Version
+   * ファイルパスを指定して、そのファイルに対応する Modrinth のバージョンデータを取得します。
+   * 取得したデータはファイルにキャッシュされます。
+   */
+  getVersionFromFile := filePath -> cached["getVersionFromFile-$(getSha1(filePath))"] ( => getModrinthClient().fileSearch(filePath) )
+
+
+  /**
+   * install(targetMinecraftDir: STRING, modpackVersionNumber: STRING?): NULL
+   * [targetMinecraftDir] に NeoForge サーバーと Modpack の Mod をインストールします。
+   * [modpackVersionNumber] が NULL の場合は config.json で指定されたバージョンが使用されます。
+   * ディレクトリが既に存在する場合はエラーになります。
+   */
+  install := targetMinecraftDir, modpackVersionNumber -> (
+    __.$# == 2 || !! "Usage: install(targetMinecraftDir: STRING, modpackVersionNumber: STRING?): NULL"
+
+    # 前提チェック
+    EXECL("bash", "-c", %>command -v curl > /dev/null; echo $?<%).&.+ == 0 || !! "Error: curl is not installed"
+    EXECL("bash", "-c", %>command -v java > /dev/null; echo $?<%).&.+ == 0 || !! "Error: java is not installed"
+    EXECL("bash", "-c", %>command -v unzip > /dev/null; echo $?<%).&.+ == 0 || !! "Error: unzip is not installed"
+    exists(targetMinecraftDir) && !! "Target Minecraft directory already exists: $targetMinecraftDir"
+
+    # NeoForge インストーラーのダウンロード
+    neoforgeVersion := getConfig().neoforge_version
+    neoforgeInstallerFilename := "neoforge-$neoforgeVersion-installer.jar"
+    neoforgeInstallerDir := projectDir RESOLVE "build/neoforge-installer"
+    neoforgeInstallerPath := neoforgeInstallerDir RESOLVE neoforgeInstallerFilename
+    exists(neoforgeInstallerPath) ? (
+      OUT << "NeoForge installer already exists at $neoforgeInstallerPath, skipping download"
+    ) : (
+      url := "https://maven.neoforged.net/releases/net/neoforged/neoforge/$neoforgeVersion/$neoforgeInstallerFilename"
+      OUT << "Fetching NeoForge installer from $url"
+      mkdirs(neoforgeInstallerDir)
+      WRITEB[neoforgeInstallerPath] << FETCHB(url)
+      OUT << "Downloaded NeoForge installer to $neoforgeInstallerPath"
+    )
+
+    # Minecraft ディレクトリの作成
+    OUT << "Creating Minecraft directory at $targetMinecraftDir"
+    mkdirs(targetMinecraftDir)
+    OUT << "Created Minecraft directory at $targetMinecraftDir"
+
+    # サーバーの初期化
+    OUT << "Initializing server in $targetMinecraftDir using $neoforgeInstallerPath"
+    EXECL("bash", "-c", %>
+      absolute_neoforge_installer_path=$(realpath -s "$2")
+      cd -- "$1"
+      java -jar "$absolute_neoforge_installer_path" --install-server
+    <%, "-", targetMinecraftDir, neoforgeInstallerPath) | *OUT
+    OUT << "Initialized server in $targetMinecraftDir"
+
+    # サーバーの設定
+    userJvmArgsPath := targetMinecraftDir RESOLVE "user_jvm_args.txt"
+    OUT << "Writing user JVM arguments to $userJvmArgsPath"
+    WRITEL[userJvmArgsPath] << CACHE << READL(userJvmArgsPath), "", "-Xmx4G"
+    OUT << "Wrote user JVM arguments to $userJvmArgsPath"
+
+    # Modpack のダウンロード
+    modPackFile := getModrinthClient().getProjectVersions(getConfig().server_modpack_project_id)()
+      >> FILTER [ _ => _.version_number == (modpackVersionNumber ?: getConfig().server_modpack_version) ]
+      | _.files()
+      >> FILTER [ _ => _.primary ]
+      >> SINGLE
+    modpacksDir := projectDir RESOLVE "build/modpacks"
+    modpackPath := modpacksDir RESOLVE modPackFile.filename
+    exists(modpackPath) ? (
+      OUT << "Modpack already exists at $modpackPath, skipping download"
+    ) : (
+      OUT << "Fetching modpack from $(modPackFile.url)"
+      mkdirs(modpacksDir)
+      WRITEB[modpackPath] << FETCHB(modPackFile.url)
+      OUT << "Fetched modpack to $(modpacksDir RESOLVE modPackFile.filename)"
+    )
+
+    # Mod のインストール
+    modpack := EXECL("unzip", "-p", modpackPath, "modrinth.index.json").&.$*
+    OUT << "Installing $(modpack.files.$#) mods to $targetMinecraftDir"
+    mkdirs(targetMinecraftDir RESOLVE "mods")
+    modpack.files() | file => (
+      modPath := targetMinecraftDir RESOLVE file.path
+      url := file.downloads() >> SINGLE
+      exists(modPath) ? (
+        OUT << "Mod already exists at $modPath, skipping download"
+      ) : (
+        OUT << "Fetching mod from $url to $modPath"
+        WRITEB[modPath] << FETCHB(url)
+      )
+    )
+    OUT << "Installed $(modpack.files.$#) mods to $targetMinecraftDir"
+
+    OUT << "Success"
+  )
+
+  /**
+   * diffToDefaultMinecraftDir(targetMinecraftDir: STRING): STRING<diff>
+   * デフォルトの Minecraft ディレクトリと [targetMinecraftDir] の間で mods ディレクトリの差分を返します。
+   */
+  diffToDefaultMinecraftDir := targetMinecraftDir -> (
+    a := targetMinecraftDir RESOLVE "mods"
+    b := getConfig().modrinth_minecraft_dir RESOLVE "mods"
+    EXEC("bash", "-c", %>
+      diff -U0 <(ls -1 "$1") <(ls -1 "$2") | grep -vE '^(@@|---|\+\+\+) '
+      exit 0
+    <%, "-", a, b)
+  )
+
+  /**
+   * syncFromDefaultMinecraftDir(targetMinecraftDir: STRING): NULL
+   * デフォルトの Minecraft ディレクトリから [targetMinecraftDir] の mods ディレクトリにファイルをコピー・削除して同期します。
+   */
+  syncFromDefaultMinecraftDir := targetMinecraftDir -> (
+    a := getConfig().modrinth_minecraft_dir RESOLVE "mods"
+    b := targetMinecraftDir RESOLVE "mods"
+    EXECL("bash", "-c", %>
+      rsync -c -a --delete -v "$1"/ "$2"/
+    <%, "-", a, b)
+    NULL
+  )
+
+  /**
+   * getModDependencies(minecraftDir: STRING?): ARRAY<STRING>
+   * [minecraftDir] の mods ディレクトリ内の Mod ファイルの依存関係を出力します。
+   * [minecraftDir] が NULL の場合はデフォルトの Minecraft ディレクトリを使用します。
+   */
+  getModDependencies := minecraftDir -> (
+    __.$# == 1 || !! "Usage: getModDependencies(minecraftDir: STRING?): ARRAY<STRING>"
+    modsDir := (minecraftDir ?: getConfig().modrinth_minecraft_dir) RESOLVE "mods"
+    modFiles := FILE_TREE(modsDir) >> FILTER[by: _ -> _ RESOLVE ".." == modsDir] >> TO_ARRAY
+    modFiles() | filePath => LAUNCH ( =>
+      version := getVersionFromFile(filePath)
+      {
+        path: filePath
+        project_id: version.project_id
+        dependencies: version.dependencies().project_id >> TO_ARRAY
+      }
+    ) >> CACHE | _::await()
+  )
+
+  /**
+   * getRunCommand(targetMinecraftDir: STRING): STRING
+   * [targetMinecraftDir] で Minecraft サーバーを起動するためのコマンドを返します。
+   * `xa '...; getRunCommand(dir)' | bash` のようにして使用します。
+   */
+  getRunCommand := targetMinecraftDir -> %>(cd '<%= targetMinecraftDir::replace(/'/g; %>'\''<%) %>' && ./run.sh -nogui)<%
+
+}
