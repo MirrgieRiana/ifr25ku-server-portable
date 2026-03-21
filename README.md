@@ -74,6 +74,11 @@ Farmer's Delight
 
 - [ifr25ku-server-portable-0.0.0.xa1](.xarpite/maven/io/github/mirrgieriana/ifr25ku-server-portable/0.0.0/ifr25ku-server-portable-0.0.0.xa1)
 
+## MEMORY.md
+
+AI がリポジトリの構造・内容などを把握するためのドキュメントです。
+AI が管理しており、コミットもされます。
+
 ## ライセンス
 
 MIT License (Copyright (c) 2024-2025 MirrgieRiana)
