@@ -194,7 +194,7 @@ projectDir := ENV.IFR25KU_SERVER_PORTABLE_HOME ?: PWD
     b := targetMinecraftDir RESOLVE "mods"
     EXECL("bash", "-c", %>
       rsync -c -a --delete -v "$1"/ "$2"/
-    <%, "-", a, b)
+    <%, "-", a, b) | *OUT
     NULL
   )
 
