@@ -40,7 +40,35 @@ $ xa '
 Farmer's Delight
 ```
 
-## API
+### 設定
+
+`.ifr25ku-server-portable/config.json` に以下の項目を記述してください。
+
+| キー                          | 説明                                     |
+|-----------------------------|----------------------------------------|
+| `modrinth_client_inc`       | modrinth-client ライブラリの Maven リポジトリ URL |
+| `modrinth_client_location`  | modrinth-client の Maven 座標             |
+| `neoforge_version`          | NeoForge のバージョン                        |
+| `server_modpack_project_id` | Modrinth 上の Modpack プロジェクト ID          |
+| `server_modpack_version`    | Modpack のバージョン                         |
+| `modrinth_minecraft_dir`    | ローカルの Minecraft ディレクトリのパス              |
+
+---
+
+記述例
+
+```json
+{
+  "modrinth_client_inc": "https://raw.githubusercontent.com/MirrgieRiana/modrinth-client.xa1/d7d9c6c3ba741fc8e2c12d7253ac135870f2127b/.xarpite/maven",
+  "modrinth_client_location": "io.github.mirrgieriana:modrinth-client:0.0.1-SNAPSHOT",
+  "neoforge_version": "21.1.217",
+  "server_modpack_project_id": "ifr25ku-server-2509",
+  "server_modpack_version": "2026.1.27",
+  "modrinth_minecraft_dir": "/path/to/your/minecraft/directory"
+}
+```
+
+### API
 
 関数の一覧や詳細は下記のソースファイルを参照してください。
 
